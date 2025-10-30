@@ -9,17 +9,17 @@ const {
 } = require("discord.js");
 const express = require("express");
 
-// Keep-alive endpoint
+// Replit keep-alive (opsional, bisa dimatiin kalau di VPS langsung)
 const app = express();
-app.get("/", (_req, res) => res.send("Bot is alive"));
-app.listen(3000, () => console.log("Server running on port 3000"));
+app.get("/", (_, res) => res.send("Bot Alive ✅"));
+app.listen(3000, () => console.log("Keep-alive web running"));
 
 const {
   DISCORD_TOKEN, CLIENT_ID, GUILD_ID,
   STAFF_ROLE_ID
 } = process.env;
 
-const BUYER_ROLE_ID = "1422860004632825897";
+const BUYER_ROLE_ID = "1422860004632825897"; // role buyer
 
 const client = new Client({
   intents: [
@@ -31,8 +31,10 @@ const client = new Client({
   partials: [Partials.Channel, Partials.GuildMember, Partials.Message]
 });
 
-let ticketQueue = [];
+// ===== States =====
+let ticketQueue = [];           
 
+// ===== Embeds =====
 function buildTicketEmbed(userId, ticketNum) {
   return new EmbedBuilder()
     .setTitle(`🎟️ Ticket #${ticketNum} — <@${userId}>`)
@@ -40,9 +42,11 @@ function buildTicketEmbed(userId, ticketNum) {
     .setDescription(
       `Halo <@${userId}>, terima kasih telah membuat tiket di **LimeHub**.\n\n` +
       `💵 **Harga Script:** \`Rp 30.000\`\n\n` +
+      `Silakan lakukan pembayaran ke salah satu metode berikut:\n\n` +
       `🔗 **QRIS** → [Klik di sini untuk scan](https://shinzux.vercel.app/image_4164bbec-5215-4e0c-98ca-d4c198a10c9e.png)\n` +
       `🔗 **PayPal** → [Klik di sini untuk bayar](https://www.paypal.me/RizkiJatiPrasetyo)\n\n` +
-      `⚠️ Setelah bayar, upload bukti transfer screenshot di channel ini.`
+      `⚠️ Setelah melakukan pembayaran, **WAJIB** upload bukti transfer berupa screenshot di channel ini.\n` +
+      `Tiket kamu akan diproses oleh staff setelah bukti diterima.`
     )
     .setThumbnail("https://shinzux.vercel.app/image_4164bbec-5215-4e0c-98ca-d4c198a10c9e.png")
     .setFooter({ text: "made by @unstoppable_neid", iconURL: client.user.displayAvatarURL() });
@@ -67,6 +71,7 @@ function buildQueueEmbed(userId, ticketNum, pos, total, nextTicketNum) {
     .setFooter({ text: "made by @unstoppable_neid" });
 }
 
+// ===== Update helpers =====
 async function updateQueueEmbeds(guild) {
   for (let i = 0; i < ticketQueue.length; i++) {
     const t = ticketQueue[i];
@@ -77,32 +82,33 @@ async function updateQueueEmbeds(guild) {
       const nextTicketNum = ticketQueue[0]?.ticketNum;
       const newEmbed = buildQueueEmbed(t.userId, t.ticketNum, i + 1, ticketQueue.length, nextTicketNum);
       await msg.edit({ embeds: [newEmbed] });
-    } catch (e) {
-      console.log("Error updating queue embed:", e);
-    }
+    } catch {}
   }
 }
 
+// ===== Slash Commands =====
 const commands = [
   new SlashCommandBuilder().setName("setup").setDescription("Pasang panel tiket")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-  new SlashCommandBuilder().setName("on").setDescription("Aktifkan duty staff")
+  new SlashCommandBuilder().setName("on").setDescription("Set status on-duty (dummy)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
-  new SlashCommandBuilder().setName("off").setDescription("Nonaktifkan duty staff")
+  new SlashCommandBuilder().setName("off").setDescription("Set status off-duty (dummy)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
 ].map(c => c.toJSON());
 
 async function registerCommands() {
   const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
   await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-  console.log("Slash commands registered");
+  console.log("Slash commands registered ✅");
 }
 
+// ===== Ready =====
 client.once("ready", async () => {
-  console.log(`${client.user.tag} is online`);
+  console.log(`${client.user.tag} is online 🚀`);
   await registerCommands();
 });
 
+// ===== Interaction =====
 client.on("interactionCreate", async (interaction) => {
   try {
     if (interaction.isChatInputCommand()) {
@@ -225,6 +231,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
+// === Bukti TF ===
 client.on("messageCreate", async (msg) => {
   if (msg.author.bot) return;
   if (!msg.channel.name.startsWith("ticket-")) return;
@@ -254,7 +261,7 @@ client.on("messageCreate", async (msg) => {
     ticketQueue.push(entry);
   }
 
-  updateQueueEmbeds(guild);
+  updateQueueEmbeds(guild); 
 });
 
 client.login(DISCORD_TOKEN);
