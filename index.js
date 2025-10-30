@@ -258,4 +258,4 @@ client.on("messageCreate", async (msg) => {
   updateQueueEmbeds(guild); 
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(DISCORD_TOKEN);
