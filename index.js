@@ -9,11 +9,6 @@ const {
 } = require("discord.js");
 const express = require("express");
 
-// Replit keep-alive
-const app = express();
-app.get("/", (_, res) => res.send("Bot Alive ✅"));
-app.listen(3000, () => console.log("Keep-alive web running"));
-
 const {
   DISCORD_TOKEN, CLIENT_ID, GUILD_ID,
   STAFF_ROLE_ID
