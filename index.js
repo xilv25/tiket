@@ -9,7 +9,7 @@ const {
 } = require("discord.js");
 const express = require("express");
 
-// Replit keep-alive (opsional, bisa dimatiin kalau di VPS langsung)
+// optional keep-alive (buat Replit)
 const app = express();
 app.get("/", (_, res) => res.send("Bot Alive ✅"));
 app.listen(3000, () => console.log("Keep-alive web running"));
@@ -19,7 +19,7 @@ const {
   STAFF_ROLE_ID
 } = process.env;
 
-const BUYER_ROLE_ID = "1422860004632825897"; // role buyer
+const BUYER_ROLE_ID = "1422860004632825897";
 
 const client = new Client({
   intents: [
@@ -31,10 +31,9 @@ const client = new Client({
   partials: [Partials.Channel, Partials.GuildMember, Partials.Message]
 });
 
-// ===== States =====
-let ticketQueue = [];           
+let ticketQueue = []; // simpan data tiket
 
-// ===== Embeds =====
+// === EMBED UTAMA ===
 function buildTicketEmbed(userId, ticketNum) {
   return new EmbedBuilder()
     .setTitle(`🎟️ Ticket #${ticketNum} — <@${userId}>`)
@@ -45,13 +44,14 @@ function buildTicketEmbed(userId, ticketNum) {
       `Silakan lakukan pembayaran ke salah satu metode berikut:\n\n` +
       `🔗 **QRIS** → [Klik di sini untuk scan](https://shinzux.vercel.app/image_4164bbec-5215-4e0c-98ca-d4c198a10c9e.png)\n` +
       `🔗 **PayPal** → [Klik di sini untuk bayar](https://www.paypal.me/RizkiJatiPrasetyo)\n\n` +
-      `⚠️ Setelah melakukan pembayaran, **WAJIB** upload bukti transfer berupa screenshot di channel ini.\n` +
-      `Tiket kamu akan diproses oleh staff setelah bukti diterima.`
+      `⚠️ Setelah melakukan pembayaran, **WAJIB** upload bukti transfer (screenshot) di channel ini.\n` +
+      `Staff akan memproses tiket kamu setelah bukti diterima.`
     )
     .setThumbnail("https://shinzux.vercel.app/image_4164bbec-5215-4e0c-98ca-d4c198a10c9e.png")
     .setFooter({ text: "made by @unstoppable_neid", iconURL: client.user.displayAvatarURL() });
 }
 
+// === EMBED ANTRIAN ===
 function buildQueueEmbed(userId, ticketNum, pos, total, nextTicketNum) {
   const statusLine = pos === 1
     ? `+ 🚀 POSISI: #${pos} dari ${total}`
@@ -71,7 +71,7 @@ function buildQueueEmbed(userId, ticketNum, pos, total, nextTicketNum) {
     .setFooter({ text: "made by @unstoppable_neid" });
 }
 
-// ===== Update helpers =====
+// === UPDATE ANTRIAN ===
 async function updateQueueEmbeds(guild) {
   for (let i = 0; i < ticketQueue.length; i++) {
     const t = ticketQueue[i];
@@ -82,17 +82,17 @@ async function updateQueueEmbeds(guild) {
       const nextTicketNum = ticketQueue[0]?.ticketNum;
       const newEmbed = buildQueueEmbed(t.userId, t.ticketNum, i + 1, ticketQueue.length, nextTicketNum);
       await msg.edit({ embeds: [newEmbed] });
-    } catch {}
+    } catch (e) { }
   }
 }
 
-// ===== Slash Commands =====
+// === SLASH COMMANDS ===
 const commands = [
   new SlashCommandBuilder().setName("setup").setDescription("Pasang panel tiket")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-  new SlashCommandBuilder().setName("on").setDescription("Set status on-duty (dummy)")
+  new SlashCommandBuilder().setName("on").setDescription("Aktifkan duty staff")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
-  new SlashCommandBuilder().setName("off").setDescription("Set status off-duty (dummy)")
+  new SlashCommandBuilder().setName("off").setDescription("Nonaktifkan duty staff")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
 ].map(c => c.toJSON());
 
@@ -102,13 +102,13 @@ async function registerCommands() {
   console.log("Slash commands registered ✅");
 }
 
-// ===== Ready =====
+// === READY ===
 client.once("ready", async () => {
   console.log(`${client.user.tag} is online 🚀`);
   await registerCommands();
 });
 
-// ===== Interaction =====
+// === INTERACTIONS ===
 client.on("interactionCreate", async (interaction) => {
   try {
     if (interaction.isChatInputCommand()) {
@@ -140,7 +140,8 @@ client.on("interactionCreate", async (interaction) => {
         await interaction.deferReply({ ephemeral: true });
 
         const existing = interaction.guild.channels.cache.find(
-          c => c.name.startsWith("ticket-") && c.permissionsFor(interaction.user.id)?.has(PermissionsBitField.Flags.ViewChannel)
+          c => c.name.startsWith("ticket-") &&
+          c.permissionsFor(interaction.user.id)?.has(PermissionsBitField.Flags.ViewChannel)
         );
         if (existing) {
           return interaction.editReply({ content: `❌ Kamu sudah punya tiket aktif: ${existing}` });
@@ -151,7 +152,6 @@ client.on("interactionCreate", async (interaction) => {
           .map(c => parseInt(c.name.split("-")[1]))
           .filter(n => !isNaN(n));
         const nextNumber = allTickets.length > 0 ? Math.max(...allTickets) + 1 : 1;
-        const ticketName = `ticket-${nextNumber}`;
 
         const overwrites = [
           { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
@@ -161,54 +161,69 @@ client.on("interactionCreate", async (interaction) => {
           overwrites.push({ id: String(STAFF_ROLE_ID), allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] });
         }
 
-        const chan = await interaction.guild.channels.create({
-          name: ticketName,
+        const channel = await interaction.guild.channels.create({
+          name: `ticket-${nextNumber}`,
           type: ChannelType.GuildText,
           permissionOverwrites: overwrites
         });
 
         const ticketEmbed = buildTicketEmbed(interaction.user.id, nextNumber);
-
         const row2 = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId("claim_ticket").setLabel("Claim Ticket").setStyle(ButtonStyle.Primary),
           new ButtonBuilder().setCustomId("close_ticket").setLabel("Close Ticket").setStyle(ButtonStyle.Danger)
         );
 
-        await chan.send({ embeds: [ticketEmbed], components: [row2] });
-        return interaction.editReply({ content: `✅ Tiket berhasil dibuat: ${chan}` });
+        const sentTicket = await channel.send({ embeds: [ticketEmbed], components: [row2] });
+
+        // simpan data tiket + buyer id
+        ticketQueue.push({
+          channelId: channel.id,
+          messageId: sentTicket.id,
+          userId: interaction.user.id,
+          ticketNum: nextNumber
+        });
+
+        return interaction.editReply({ content: `✅ Tiket berhasil dibuat: ${channel}` });
       }
 
+      // === CLAIM TICKET ===
       if (interaction.customId === "claim_ticket") {
         if (!interaction.member.roles.cache.has(String(STAFF_ROLE_ID))) {
           return interaction.reply({ content: "❌ Hanya staff yang bisa claim tiket.", ephemeral: true });
         }
         await interaction.deferUpdate();
-        const channel = interaction.channel;
-        const buyer = channel.members.find(m => !m.user.bot && !m.roles.cache.has(String(STAFF_ROLE_ID)));
 
-        if (buyer) { try { await buyer.roles.add(BUYER_ROLE_ID); } catch {} }
+        const channel = interaction.channel;
+        const ticketData = ticketQueue.find(t => t.channelId === channel.id);
+        const buyerId = ticketData?.userId;
+        const buyer = buyerId ? await interaction.guild.members.fetch(buyerId).catch(() => null) : null;
+
+        if (buyer) {
+          try { await buyer.roles.add(BUYER_ROLE_ID); } catch {}
+        }
 
         const claimEmbed = new EmbedBuilder()
           .setTitle("🛠️ Ticket Processing")
-          .setDescription(`Tiket ini sedang diproses oleh <@${interaction.user.id}>.\n\nHalo <@${buyer?.id}>, mohon tunggu ya!`)
+          .setDescription(`Tiket ini sedang diproses oleh <@${interaction.user.id}>.\n\nHalo <@${buyerId}>, mohon tunggu ya!`)
           .setColor("Yellow");
         await channel.send({ embeds: [claimEmbed] });
 
+        // tunggu 5 detik, kirim done
         setTimeout(async () => {
-          const nextTicketNum = ticketQueue[1]?.ticketNum;
           const doneEmbed = new EmbedBuilder()
             .setTitle("✅ Ticket Done")
             .setDescription(
-              `Halo <@${buyer?.id}>, tiket ini sudah selesai.\n\n` +
+              `Halo <@${buyerId}>, tiket kamu sudah selesai.\n\n` +
               `Silakan lanjut ke channel <#1433394924727832638>\n\n` +
-              `Coba ketik \`!command\` biar tau semua info yang kamu cari!\n\n` +
-              (nextTicketNum ? `👀 Staff, selanjutnya silakan urus: **Ticket #${nextTicketNum}**` : "")
+              `Ketik \`!command\` untuk lihat semua info yang kamu cari!`
             )
             .setColor("Green");
+
           await channel.send({ embeds: [doneEmbed] });
           if (buyer) { try { await buyer.send({ embeds: [doneEmbed] }); } catch {} }
         }, 5000);
 
+        // auto delete setelah 1 menit
         setTimeout(async () => {
           ticketQueue = ticketQueue.filter(t => t.channelId !== channel.id);
           updateQueueEmbeds(interaction.guild);
@@ -216,6 +231,7 @@ client.on("interactionCreate", async (interaction) => {
         }, 60 * 1000);
       }
 
+      // === CLOSE TICKET ===
       if (interaction.customId === "close_ticket") {
         if (!interaction.member.roles.cache.has(String(STAFF_ROLE_ID))) {
           return interaction.reply({ content: "❌ Hanya staff yang bisa close tiket.", ephemeral: true });
@@ -226,12 +242,12 @@ client.on("interactionCreate", async (interaction) => {
         await interaction.channel.delete().catch(() => {});
       }
     }
-  } catch (e) {
-    console.error("Error handling interaction:", e);
+  } catch (err) {
+    console.error("Error:", err);
   }
 });
 
-// === Bukti TF ===
+// === BUKTI TF (screenshot) ===
 client.on("messageCreate", async (msg) => {
   if (msg.author.bot) return;
   if (!msg.channel.name.startsWith("ticket-")) return;
@@ -242,7 +258,7 @@ client.on("messageCreate", async (msg) => {
   const ticketNum = parseInt(channel.name.split("-")[1]) || "?";
 
   const idxExisting = ticketQueue.findIndex(t => t.channelId === channel.id);
-  const pos   = idxExisting === -1 ? ticketQueue.length + 1 : idxExisting + 1;
+  const pos = idxExisting === -1 ? ticketQueue.length + 1 : idxExisting + 1;
   const total = idxExisting === -1 ? ticketQueue.length + 1 : ticketQueue.length;
 
   const queueEmbed = buildQueueEmbed(msg.author.id, ticketNum, pos, total, ticketQueue[0]?.ticketNum);
@@ -261,10 +277,7 @@ client.on("messageCreate", async (msg) => {
     ticketQueue.push(entry);
   }
 
-  updateQueueEmbeds(guild); 
+  updateQueueEmbeds(guild);
 });
-
-console.log("Token:", process.env.DISCORD_TOKEN);
-console.log("Length:", process.env.DISCORD_TOKEN?.length);
 
 client.login(DISCORD_TOKEN);
